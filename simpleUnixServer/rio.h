@@ -1,3 +1,4 @@
+#include <stdarg.h>
 #include <unistd.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -46,13 +47,20 @@ void printBacktrace(){
    free(strings);
 }
 
-void debug(char* s){
-    printf("%s\n", s);
+void debug(char* format,...){
+    va_list args;
+    va_start(args,format);
+    vprintf(format,args);
+    va_end(args);
+    printf("\n");
+    fflush(stdout);
 }
+
 
 void printError(char* s){
     fprintf(stderr, "%s error, errorcode: %d\n", s, errno);
     printBacktrace();
+    fflush(stderr);
     exit(1);
 }
 
@@ -102,20 +110,24 @@ void rio_readinitb(rio_t* rp, int fd){
 ssize_t rio_read(rio_t* rp, char* usrbuf, size_t n){
     int cnt;
     while(rp->rio_cnt <= 0){
+        debug("rio read internal buf start");
         rp->rio_cnt = read(rp->rio_fd, rp->rio_buf, sizeof(rp->rio_buf));
+        //debug("rio read %d bytes to internal buf", rp->rio_cnt);
         if(rp->rio_cnt < 0)
             return -1; // error
         else if(rp->rio_cnt == 0)
             return 0; //EOF
         rp->rio_bufptr = rp->rio_buf;
+        debug("rio read one loop end");
     }
 
     cnt = n;
     if(n > rp->rio_cnt)
         cnt = rp->rio_cnt;
-    memcpy(usrbuf, rp->rio_buf, cnt);
+    memcpy(usrbuf, rp->rio_bufptr, cnt);
     rp->rio_cnt -= cnt;
     rp->rio_bufptr += cnt;
+    //debug("rio read %d bytes in one call", cnt);
     return cnt;
 }
 
@@ -126,6 +138,7 @@ ssize_t rio_readlineb(rio_t* rp, void* usrbuf, size_t maxlen){
     for(n = 1; n < maxlen; n++){
         if((rc = rio_read(rp, &c, 1)) == 1){
             *bufp++ = c;
+//            debug("%c",c);
             if(c == '\n')
                 break;
         }else if(rc == 0)
@@ -134,6 +147,7 @@ ssize_t rio_readlineb(rio_t* rp, void* usrbuf, size_t maxlen){
             return -1; // error
     }
     *bufp = 0;
+    debug("rio read one line");
     return n;
 }
 
@@ -171,4 +185,3 @@ ssize_t Rio_readlineb(rio_t* rp, void* usrbuf, size_t maxlen){
     return ret;
 }
 // wrapper funtions end
-

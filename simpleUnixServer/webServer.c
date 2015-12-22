@@ -1,3 +1,4 @@
+#include <stdarg.h>
 #include <unistd.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -46,13 +47,20 @@ void printBacktrace(){
    free(strings);
 }
 
-void debug(char* s){
-    printf("%s\n", s);
+void debug(char* format,...){
+    va_list args;
+    va_start(args,format);
+    vprintf(format,args);
+    va_end(args);
+    printf("\n");
+    fflush(stdout);
 }
+
 
 void printError(char* s){
     fprintf(stderr, "%s error, errorcode: %d\n", s, errno);
     printBacktrace();
+    fflush(stderr);
     exit(1);
 }
 
@@ -102,20 +110,24 @@ void rio_readinitb(rio_t* rp, int fd){
 ssize_t rio_read(rio_t* rp, char* usrbuf, size_t n){
     int cnt;
     while(rp->rio_cnt <= 0){
+        debug("rio read internal buf start");
         rp->rio_cnt = read(rp->rio_fd, rp->rio_buf, sizeof(rp->rio_buf));
+        //debug("rio read %d bytes to internal buf", rp->rio_cnt);
         if(rp->rio_cnt < 0)
             return -1; // error
         else if(rp->rio_cnt == 0)
             return 0; //EOF
         rp->rio_bufptr = rp->rio_buf;
+        debug("rio read one loop end");
     }
 
     cnt = n;
     if(n > rp->rio_cnt)
         cnt = rp->rio_cnt;
-    memcpy(usrbuf, rp->rio_buf, cnt);
+    memcpy(usrbuf, rp->rio_bufptr, cnt);
     rp->rio_cnt -= cnt;
     rp->rio_bufptr += cnt;
+    //debug("rio read %d bytes in one call", cnt);
     return cnt;
 }
 
@@ -126,6 +138,7 @@ ssize_t rio_readlineb(rio_t* rp, void* usrbuf, size_t maxlen){
     for(n = 1; n < maxlen; n++){
         if((rc = rio_read(rp, &c, 1)) == 1){
             *bufp++ = c;
+//            debug("%c",c);
             if(c == '\n')
                 break;
         }else if(rc == 0)
@@ -134,6 +147,7 @@ ssize_t rio_readlineb(rio_t* rp, void* usrbuf, size_t maxlen){
             return -1; // error
     }
     *bufp = 0;
+    debug("rio read one line");
     return n;
 }
 
@@ -179,19 +193,19 @@ int open_listenfd(int port){
     if((listenfd = socket(AF_INET, SOCK_STREAM,0)) <0)
         return -1;
     
-    printf("create socket, fd = %d \n", listenfd);
+    debug("create socket, fd = %d ", listenfd);
 
     if(setsockopt(listenfd, SOL_SOCKET, SO_REUSEADDR,
                 (const void*)&optval,sizeof(int)) < 0)
         return -1;
 
     debug("set socket opt ok");
-    printf("port %d\n", port);
+    debug("port %d", port);
     
     bzero((char*)&serveraddr, sizeof(serveraddr));
     serveraddr.sin_family = AF_INET;
     serveraddr.sin_addr.s_addr = htonl(INADDR_ANY);
-    //inet_pton(AF_INET, "127.0.0.1", &serveraddr.sin_addr);
+    //inet_pton(AF_INET, "192.168.31.111", &serveraddr.sin_addr);
     serveraddr.sin_port = htons((unsigned short)port);
     
     if(bind(listenfd, (struct sockaddr*)&serveraddr, sizeof(serveraddr)) < 0)
@@ -202,7 +216,7 @@ int open_listenfd(int port){
     if(listen(listenfd,100) < 0)
         return -1;
 
-    printf("listen ok, fd = %d\n", listenfd);
+    debug("listen ok, fd = %d", listenfd);
 
     return listenfd;
 
@@ -230,20 +244,21 @@ int main(int argc, char** argv )
     port = atoi(argv[1]);
     
     if((listenfd = open_listenfd(port)) < 0){
-        printf("open listenfd error errno = %d \n", errno);
+        debug("open listenfd error errno = %d ", errno);
     }
 
-    printf("listenfd = %d \n", listenfd);
+    debug("listenfd = %d ", listenfd);
 
     while(1){
         clientlen = sizeof(clientaddr);
         connfd = accept(listenfd,(SA*)&clientaddr, &clientlen);
         if(connfd == -1)
             printError("accept error");
-        printf("get a request from %d ", clientaddr.sin_port);
-        fwrite
+        debug("get a request from %d ", clientaddr.sin_port);
+        fflush(stdout);
         doit(connfd);
         close(connfd);
+        debug("a connection closed");
     }
 
 
@@ -260,7 +275,7 @@ void doit(int fd){
     rio_readinitb(&rio, fd);
 
     Rio_readlineb(&rio,buf, MAXLINE);
-    printf("get a request %s", buf);
+    debug("get a request %s", buf);
     sscanf(buf, "%s %s %s", method, uri, version);
     if(strcasecmp(method, "GET")){
         clienterror(fd, method, "501", "Not Implemented",
@@ -320,7 +335,7 @@ void read_requestthdrs(rio_t *rp){
     Rio_readlineb(rp, buf, MAXLINE);
     while(strcmp(buf, "\r\n")){
         Rio_readlineb(rp,buf,MAXLINE);
-        printf("%s",buf);
+        debug("a header line: %s",buf);
     }
     return;
 }
@@ -333,7 +348,7 @@ int parse_uri(char* uri, char* filename, char* cgiargs){
         strcpy(cgiargs, "");
         strcpy(filename,".");
         strcat(filename,uri);
-        if(uri[strlen(uri-1)] == '/')
+        if(uri[strlen(uri)-1] == '/')
             strcat(filename, "home.html");
         return 1;
     }else{
@@ -354,7 +369,7 @@ int parse_uri(char* uri, char* filename, char* cgiargs){
 void serve_static(int fd, char* filename, int filesize){
     int srcfd;
     char* srcp, filetype[MAXLINE], buf[MAXLINE];
-
+    debug("call serve_static with filename %s", filename);
     //send response headers to client
     get_filetype(filename, filetype);
     sprintf(buf, "HTTP/1.0 200 ok\r\n");
@@ -366,6 +381,9 @@ void serve_static(int fd, char* filename, int filesize){
     // send response body to client
     srcfd = open(filename, O_RDONLY, 0);
     srcp = mmap(0, filesize, PROT_READ, MAP_PRIVATE, srcfd,0);
+    close(srcfd);
+    Rio_writen(fd, srcp, filesize);
+    munmap(srcp, filesize);
 }
 
 void get_filetype(char* filename, char* filetype){

@@ -40,6 +40,7 @@ int main(int argc, char** argv){
     while(Rio_readlineb(&rio, buf,MAXLINE)){
         fputs(buf,stdout);
     }
+    debug("client exit");
     
     
 }
