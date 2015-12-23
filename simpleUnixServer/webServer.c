@@ -112,7 +112,7 @@ ssize_t rio_read(rio_t* rp, char* usrbuf, size_t n){
     while(rp->rio_cnt <= 0){
         debug("rio read internal buf start");
         rp->rio_cnt = read(rp->rio_fd, rp->rio_buf, sizeof(rp->rio_buf));
-        //debug("rio read %d bytes to internal buf", rp->rio_cnt);
+        debug("rio read %d bytes to internal buf", rp->rio_cnt);
         if(rp->rio_cnt < 0)
             return -1; // error
         else if(rp->rio_cnt == 0)
@@ -346,16 +346,17 @@ int parse_uri(char* uri, char* filename, char* cgiargs){
 
     if(!strstr(uri, "cgi-bin")){
         strcpy(cgiargs, "");
-        strcpy(filename,".");
+        strcpy(filename,"./static");
         strcat(filename,uri);
         if(uri[strlen(uri)-1] == '/')
             strcat(filename, "home.html");
         return 1;
     }else{
-        ptr = index(uri, "?");
+        ptr =  index(uri, '?');
         if(ptr){
             strcpy(cgiargs, ptr + 1);
             *ptr = '\0';
+            debug("get arguments uri now is %s",uri);
         }
         else{
             strcpy(cgiargs,"");
@@ -374,7 +375,7 @@ void serve_static(int fd, char* filename, int filesize){
     get_filetype(filename, filetype);
     sprintf(buf, "HTTP/1.0 200 ok\r\n");
     sprintf(buf, "%sServer: Tiny Web Server\r\n", buf);
-    sprintf(buf, "%sontent-length: %d\r\n", buf, filesize);
+  //  sprintf(buf, "%sContent-length: %d\r\n", buf, filesize);
     sprintf(buf, "%sContent-type: %s\r\n\r\n", buf, filetype);
     Rio_writen(fd, buf, strlen(buf));
 
@@ -400,15 +401,25 @@ void get_filetype(char* filename, char* filetype){
 void serve_dynamic(int fd, char* filename, char* cgiargs){
     char buf[MAXLINE], *emptylist[]= {NULL};
 
+  //  sprintf(buf, "HTTP/1.0 200 ok\r\n");
+  //  Rio_writen(fd, buf, strlen(buf));
+  //  sprintf(buf, "Server:Tiny Web Server\r\n");
+  //  Rio_writen(fd,buf,strlen(buf));
+  //  sprintf("Content-length: %u\r\n", strlen(content)+1);
+  //  printf("Content-type: %s\r\n\r\n", "text/html");
+
     sprintf(buf, "HTTP/1.0 200 ok\r\n");
+    sprintf(buf, "%sServer: Tiny Web Server\r\n", buf);
+   // sprintf(buf, "%sContent-type: %s\r\n\r\n", buf, "text/html");
+    //sprintf(buf, "%s hello this is a dynamic service\n");
     Rio_writen(fd, buf, strlen(buf));
-    sprintf(buf, "Server:Tiny Web Server\r\n");
-    Rio_writen(fd,buf,strlen(buf));
+
 
     if(fork() == 0){
         setenv("QUERY_STRING", cgiargs, 1);
         dup2(fd,STDOUT_FILENO);
-        execve(filename, emptylist, environ);
+        if(execve(filename, emptylist, environ) < 0)
+            printError("execve error");
     }
     wait(NULL);
 }

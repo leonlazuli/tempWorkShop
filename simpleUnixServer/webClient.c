@@ -23,22 +23,26 @@ int main(int argc, char** argv){
     char* host;
     rio_t rio;
 
-    if(argc != 3){
-        fprintf(stderr, "usage: %s <host> <port>\n",argv[0]);
+    if(argc != 4){
+        fprintf(stderr, "usage: %s <host> <port> <request>\n",argv[0]);
         exit(0);
     }
     host = argv[1];
     port = atoi(argv[2]);
 
     clientfd = open_clientfd(host,port);
-    if(clientfd  < 0)
+    if(clientfd  <= 0)
         printError("connect to server failed");
     debug("connect success");
     
     rio_readinitb(&rio, clientfd);
+    sprintf(buf,"GET %s HTTP/1.0\r\n\r\n", argv[3]);
+    debug("%s", buf);
+    Rio_writen(clientfd, buf, strlen(buf));
 
     while(Rio_readlineb(&rio, buf,MAXLINE)){
         fputs(buf,stdout);
+        fflush(stdout);
     }
     debug("client exit");
     
