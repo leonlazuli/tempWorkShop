@@ -36,6 +36,7 @@ int main(int argc, char** argv){
     debug("connect success");
     
     rio_readinitb(&rio, clientfd);
+    sleep(3);
     sprintf(buf,"GET %s HTTP/1.0\r\n\r\n", argv[3]);
     debug("%s", buf);
     Rio_writen(clientfd, buf, strlen(buf));

@@ -255,7 +255,6 @@ int main(int argc, char** argv )
         if(connfd == -1)
             printError("accept error");
         debug("get a request from %d ", clientaddr.sin_port);
-        fflush(stdout);
         doit(connfd);
         close(connfd);
         debug("a connection closed");
@@ -274,7 +273,7 @@ void doit(int fd){
     rio_t rio;
     rio_readinitb(&rio, fd);
 
-    Rio_readlineb(&rio,buf, MAXLINE);
+    Rio_readlineb(&rio,buf, MAXLINE); // read the http request
     debug("get a request %s", buf);
     sscanf(buf, "%s %s %s", method, uri, version);
     if(strcasecmp(method, "GET")){
@@ -383,6 +382,7 @@ void serve_static(int fd, char* filename, int filesize){
     srcfd = open(filename, O_RDONLY, 0);
     srcp = mmap(0, filesize, PROT_READ, MAP_PRIVATE, srcfd,0);
     close(srcfd);
+    sleep(3);
     Rio_writen(fd, srcp, filesize);
     munmap(srcp, filesize);
 }
